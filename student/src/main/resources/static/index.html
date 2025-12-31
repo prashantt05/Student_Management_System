@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Student Manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <style>
+        /* ---------- DARK PROFESSIONAL UI ---------- */
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 20px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+
+        .card {
+            background: #161b22;
+            padding: 20px;
+            border-radius: 10px;
+            width: 350px;
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 6px;
+            border: 1px solid #30363d;
+            background: #0d1117;
+            color: white;
+        }
+
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 8px;
+        }
+
+        .btn-primary {
+            background: #238636;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #da3633;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #30363d;
+            color: white;
+        }
+
+        /* ---------- Student List ---------- */
+        .list {
+            flex: 1;
+            background: #161b22;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .student-card {
+            background: #0d1117;
+            margin-bottom: 12px;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .actions button {
+            margin-left: 5px;
+        }
+
+        /* ---------- MODAL ---------- */
+        .modal-bg {
+            position: fixed;
+            top:0;
+            left:0;
+            right:0;
+            bottom:0;
+            background: rgba(0,0,0,0.6);
+            display:none;
+            justify-content:center;
+            align-items:center;
+        }
+
+        .modal {
+            background:#161b22;
+            padding:20px;
+            border-radius:10px;
+            width:350px;
+        }
+
+        #toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: #238636;
+            color: white;
+            border-radius: 8px;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>Student Management System</h1>
+
+<div class="container">
+
+    <!-- Add Student Card -->
+    <div class="card">
+        <h2>Add Student</h2>
+
+        <input type="number" id="roll" placeholder="Roll Number" />
+        <input type="text" id="name" placeholder="Full Name" />
+        <input type="text" id="branch" placeholder="Branch" />
+
+        <button class="btn-primary" onclick="addStudent()">Add</button>
+        <button class="btn-secondary" onclick="clearForm()">Clear</button>
+    </div>
+
+    <!-- Student List -->
+    <div class="list">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <h2>Students</h2>
+            <button class="btn-secondary" onclick="loadStudents()">Refresh</button>
+        </div>
+
+        <input type="text" id="search" placeholder="Search by name/roll/branch" onkeyup="filterList()" />
+
+        <div id="studentList"></div>
+    </div>
+
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-bg" id="editModal">
+    <div class="modal">
+        <h2>Edit Student</h2>
+
+        <input type="text" id="editName" placeholder="Full Name" />
+        <input type="text" id="editBranch" placeholder="Branch" />
+
+        <button class="btn-primary" onclick="saveEdit()">Save</button>
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+
+<script>
+    let studentsCache = [];
+    let currentEditRoll = null;
+
+    const api = "/student";
+
+    /* ---------- Toast Notification ---------- */
+    function showToast(msg, success = true) {
+        const t = document.getElementById("toast");
+        t.style.display = "block";
+        t.style.background = success ? "#238636" : "#da3633";
+        t.innerText = msg;
+        setTimeout(() => t.style.display = "none", 2500);
+    }
+
+    /* ---------- Load Students ---------- */
+    async function loadStudents() {
+        try {
+            const res = await fetch(api);
+            const data = await res.json();
+            studentsCache = data;
+            renderList(data);
+        } catch {
+            showToast("Failed to load!", false);
+        }
+    }
+
+    function renderList(list) {
+        const box = document.getElementById("studentList");
+        box.innerHTML = "";
+
+        if(list.length === 0) {
+            box.innerHTML = "<p>No students found.</p>";
+            return;
+        }
+
+        list.forEach(s => {
+            box.innerHTML += `
+      <div class="student-card">
+        <div>
+          <strong>${s.name}</strong><br>
+          Roll: ${s.roll}<br>
+          Branch: ${s.branch}
+        </div>
+        <div class="actions">
+          <button class="btn-secondary" onclick='openModal(${JSON.stringify(s)})'>Edit</button>
+          <button class="btn-danger" onclick="deleteStudent(${s.roll})">Delete</button>
+        </div>
+      </div>
+    `;
+        });
+    }
+
+    /* ---------- Search Filter ---------- */
+    function filterList() {
+        const q = document.getElementById("search").value.toLowerCase();
+
+        const filtered = studentsCache.filter(s =>
+            s.name.toLowerCase().includes(q) ||
+            s.branch.toLowerCase().includes(q) ||
+            String(s.roll).includes(q)
+        );
+
+        renderList(filtered);
+    }
+
+    /* ---------- Add Student ---------- */
+    async function addStudent() {
+        const roll = Number(document.getElementById("roll").value);
+        const name = document.getElementById("name").value;
+        const branch = document.getElementById("branch").value;
+
+        if(!roll || !name || !branch){
+            showToast("All fields required", false);
+            return;
+        }
+
+        const res = await fetch(api, {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body: JSON.stringify({ roll, name, branch })
+        });
+
+        if(res.ok){
+            showToast("Student added");
+            clearForm();
+            loadStudents();
+        } else showToast("Failed!", false);
+    }
+
+    function clearForm() {
+        document.getElementById("roll").value = "";
+        document.getElementById("name").value = "";
+        document.getElementById("branch").value = "";
+    }
+
+    /* ---------- Delete Student ---------- */
+    async function deleteStudent(roll) {
+        if(!confirm("Delete this student?")) return;
+
+        const res = await fetch(`${api}/${roll}`, { method:"DELETE" });
+
+        if(res.ok){
+            showToast("Deleted");
+            loadStudents();
+        } else showToast("Failed!", false);
+    }
+
+    /* ---------- EDIT MODAL ---------- */
+    function openModal(student) {
+        currentEditRoll = student.roll;
+        document.getElementById("editName").value = student.name;
+        document.getElementById("editBranch").value = student.branch;
+        document.getElementById("editModal").style.display = "flex";
+    }
+
+    function closeModal() {
+        document.getElementById("editModal").style.display = "none";
+    }
+
+    /* ---------- Save Edit ---------- */
+    async function saveEdit() {
+        const name = document.getElementById("editName").value;
+        const branch = document.getElementById("editBranch").value;
+
+        if(!name || !branch) {
+            showToast("Fields required", false);
+            return;
+        }
+
+        const res = await fetch(`${api}/${currentEditRoll}`, {
+            method:"PUT",
+            headers:{ "Content-Type":"application/json" },
+            body: JSON.stringify({ roll: currentEditRoll, name, branch })
+        });
+
+        if(res.ok){
+            showToast("Updated");
+            closeModal();
+            loadStudents();
+        } else showToast("Failed!", false);
+    }
+
+    /* initial load */
+    loadStudents();
+</script>
+
+</body>
+</html>
